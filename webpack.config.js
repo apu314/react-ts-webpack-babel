@@ -1,55 +1,20 @@
-const fs = require('fs');
-const path = require('path');
-const { resolve, relative } = require('path');
-const glob = require('glob');
 const TerserPlugin = require('terser-webpack-plugin');
+const HtmlWebpackPlugin = require('html-webpack-plugin');
+
+const { getEntries, outputPath } = require('./webpackConfig/fileSystem');
+const { templateContent } = require('./webpackConfig/dev');
+const MyPlugin = require('./webpackConfig/plugins/MyPlugin');
+
 
 const isProd = process.env.NODE_ENV === 'production';
 
-const outputPath = (myPath) => {
-    console.log('path ---> ', myPath)
-    console.log('exists ---> ', fs.existsSync(myPath))
-    console.log('resolve ---> ', resolve(__dirname, myPath))
-    console.log('----------')
 
 
-    if (!fs.existsSync(myPath)) {
-        fs.mkdirSync(myPath, err => {
-            if (err) throw new Error(err);
-        })
-        console.log(`Created directory: ${myPath}`);
-    }
-
-    return resolve(__dirname, myPath);
-}
-
-const getEntries = (pattern) => {
-    const entries = {};
-
-    console.log('pattern ---> ', glob.sync(pattern))
-
-    glob.sync(pattern).forEach((file) => {
-        console.log('file ---> ', file)
-        if (file.match(/\.(ts|js)x?$/)) {
-            const outputFileKey = file.replace("src/", "");
-            const outputFileName = outputFileKey.replace(/\.[^/.]+$/, ''); // Remove file extension
-            entries[outputFileName] = path.join(__dirname, file);
-    
-            console.log('outputFileKey ---> ', outputFileKey)
-            console.log('path.join(__dirname, file) -->', path.join(__dirname, file))
-        }
-    });
-    console.log('entries', {entries})
-
-    return entries;
-}
-
-const config = {
+let config = {
     mode: isProd ? 'production' : 'development',
     entry: getEntries('./src/**/*'),
     output: {
         path: outputPath('dist'),
-        // filename: '[name].js'
         filename: '[name].js'
     },
     resolve: {
@@ -69,50 +34,123 @@ const config = {
                 } */
             }
         ]
+    },
+    plugins: [
+        new MyPlugin({options: ''})
+    ],
+    optimization: {
+        concatenateModules: true,
+        splitChunks: {
+            cacheGroups: {
+                default: false,
+                vendors: false,
+                commons: {
+                    name: 'common',
+                    filename: 'common.js',
+                    test: /[\\/]node_modules[\\/]/,
+                    chunks: 'all',
+                    enforce: true,
+                    reuseExistingChunk: true,
+                    priority: -10
+                }
+            }
+        }
     }
+
 }
 
-if (isProd) {
-    config.watch = true;
-    config.optimization = {
-        // concatenateModules: true,
-        minimize: false,
-        minimizer: [ new TerserPlugin({
-            terserOptions: {
-              format: {
-                comments: false,
-              },
+if (isProd) { // Production
+    config = {
+        ...config,
+        plugins: [
+            ...config.plugins,
+            new HtmlWebpackPlugin({
+                title: 'React Typescript Webpack Babel',
+                filename: 'index.html',
+                // template: './src/index.html',
+                templateContent: templateContent,
+                inject: 'body',
+                minify: true
+            })
+        ],
+        // watch: true; // Not for production
+        optimization: {
+            ...config.optimization,
+            // concatenateModules: true,
+            minimize: true,
+            minimizer: [ new TerserPlugin({
+                terserOptions: {
+                  format: {
+                    comments: false,
+                  },
+                },
+                extractComments: false,
+              })
+            ]
+        }
+    }
+} else { // Development
+    config = {
+        ...config,
+        plugins: [
+            ...config.plugins,
+            new HtmlWebpackPlugin({
+                title: 'React Typescript Webpack Babel',
+                filename: 'index.html',
+                // template: './src/index.html',
+                templateContent: templateContent,
+                inject: 'body',
+                minify: false
+            })
+        ],
+        // watch: true; // Not for production
+        devServer: {
+            port: 9000,
+            open: true,
+            hot: true,
+            // compress: true,
+            // stats: 'errors-only',
+            client: {
+                logging: 'log',
+                progress: true,
+                overlay: {
+                    errors: true,
+                    warnings: false,
+                    // reconnect: true,
+                }
             },
-            extractComments: false,
-          })
-        ]
+            watchFiles: ['src/**/*'],
+        } 
     }
-} else {
-    config.devServer = {
-        port: 9000,
-        open: true,
-        hot: true,
-        // compress: true,
-        // stats: 'errors-only',
-        client: {
-            logging: 'info',
-            progress: true,
-            overlay: {
-                errors: true,
-                warnings: false,
-                // reconnect: true,
-            }
-        },
-        watchFiles: ['src/**/*'],
-    }
+
+    // The following commented out code works.
+    // config.plugins.push(
+    //     new HtmlWebpackPlugin({
+    //         title: 'React Typescript Webpack Babel',
+    //         filename: 'index.html',
+    //         // template: './src/index.html',
+    //         templateContent: templateContent
+    //     })
+    // )
+    // config.devServer = {
+    //     port: 9000,
+    //     open: true,
+    //     hot: true,
+    //     // compress: true,
+    //     // stats: 'errors-only',
+    //     client: {
+    //         logging: 'info',
+    //         progress: true,
+    //         overlay: {
+    //             errors: true,
+    //             warnings: false,
+    //             // reconnect: true,
+    //         }
+    //     },
+    //     watchFiles: ['src/**/*'],
+    // }
 }
 
 console.log("[ Webpack config ] ...  ", config);
 
 module.exports = config;
-
-/**
- * 💡 Por qué no??? 
- * Hacer que Webpack genere un HTML o un TWIG por cada 
- * archivo procesado, con el contenido que queramos.
- */
